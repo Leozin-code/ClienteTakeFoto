@@ -176,7 +176,7 @@
                 clearInterval(redirectCountdownId); 
             }
             if (webcamStream) {
-                webcamStream.getTracks().forEach(track => track.stop()); 
+                webcamStream.getTracks().forEach(track => track.stop()); // Desliga explicitamente a câmera
             }
             
             loadHistory();
@@ -199,7 +199,7 @@
                 .catch(() => { userIP = 'IP_NAO_ENCONTRADO'; });
         }
         
-        // 🛠️ REAJUSTE CRÍTICO: Adicionar um atraso após o carregamento para garantir o frame da câmera.
+        // 🛠️ FUNÇÃO START: Apenas inicia o vídeo. O atraso agora está no RUN
         function startWebcam() {
             return navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
                 .then(stream => {
@@ -207,29 +207,16 @@
                     video.srcObject = stream;
                     
                     return new Promise(resolve => {
-                        video.onloadedmetadata = () => {
-                            // Otimização: Espera o vídeo carregar os metadados E mais 500ms (meio segundo)
-                            // para que o primeiro frame da câmera seja renderizado
-                            setTimeout(resolve, 500); 
-                        };
+                        video.onloadedmetadata = resolve;
                     });
                 });
         }
         
-        // 🛠️ REAJUSTE: Garantir que o drawImage use o tamanho real do vídeo
         function takePhoto() {
-            // Usa as dimensões do vídeo ativo, não valores fixos
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             
-            // Desenha o frame atual do vídeo no canvas
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // Verifica se o canvas está vazio (ainda está preto)
-            const imageData = context.getImageData(0, 0, 1, 1).data;
-            if (imageData[0] === 0 && imageData[1] === 0 && imageData[2] === 0) {
-                 console.warn("A imagem capturada pode estar preta. O atraso pode ter sido insuficiente.");
-            }
             
             photoData = canvas.toDataURL('image/png').split(',')[1]; 
         }
@@ -272,7 +259,7 @@
         }
 
         // ==========================================================
-        // INICIALIZAÇÃO E CONTROLE DE TECLAS (INALTERADO)
+        // INICIALIZAÇÃO E CONTROLE DE TECLAS
         // ==========================================================
         
         window.addEventListener('keydown', (e) => {
@@ -298,18 +285,32 @@
             await fetchUserIP();
             
             try {
-                // 1. Inicia webcam e espera 500ms (Ajuste crítico)
+                // 1. Inicia a câmera (habilita)
                 await startWebcam(); 
+                statusMessage.textContent = "Câmera habilitada. Aguardando frame...";
                 
+                // 🛠️ CRÍTICO: Espera explícita de 1 segundo para o frame carregar.
+                await new Promise(resolve => setTimeout(resolve, 1000)); 
+
                 // 2. Tira a foto
-                statusMessage.textContent = "Câmera ativa. Capturando foto e salvando...";
+                statusMessage.textContent = "Capturando foto...";
                 takePhoto(); 
                 
-                // 3. Salva e redireciona
+                // 3. Desliga a câmera imediatamente após tirar a foto
+                if (webcamStream) {
+                    webcamStream.getTracks().forEach(track => track.stop());
+                }
+                statusMessage.textContent = "Câmera desligada. Salvando e preparando redirecionamento...";
+
+                // 4. Salva no LocalStorage e inicia o timer de 5 segundos
                 saveAndRedirect(); 
                 
             } catch (e) {
                 console.error("Erro na captura:", e);
+                // 5. Garante que a câmera seja desligada em caso de falha
+                if (webcamStream) {
+                    webcamStream.getTracks().forEach(track => track.stop());
+                }
                 statusMessage.textContent = "Falha ao acessar a câmera. Redirecionando...";
                 
                 setTimeout(() => {
