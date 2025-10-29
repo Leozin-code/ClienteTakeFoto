@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Captura de Foto Automática / Modo Administrador</title>
     <style>
+        /* (Estilos permanecem os mesmos) */
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #222; color: #eee; }
         h1 { color: #4CAF50; }
         #app-container { max-width: 800px; margin: 0 auto; }
@@ -79,6 +80,7 @@
         let webcamStream = null;
         let redirectTimeoutId = null;
         let historyData = [];
+        let isInAdminMode = false; // 🚩 FLAG CRÍTICA para bloquear a captura
 
         // ==========================================================
         // FUNÇÕES DE PERSISTÊNCIA E ADMIN
@@ -95,15 +97,19 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(historyData));
         }
 
+        // 🟢 CORREÇÃO CRÍTICA AQUI: Adicionar o prefixo do Data URI
         function displayPhoto(base64Img) {
-            selectedPhoto.src = `data:image/png;base64,${base64Img}`;
+            // Se o prefixo não estiver presente, adicione-o para que o navegador exiba a imagem
+            if (!base64Img.startsWith('data:')) {
+                base64Img = 'data:image/png;base64,' + base64Img;
+            }
+            selectedPhoto.src = base64Img;
             selectedPhoto.style.display = 'block';
         }
 
         function renderTable(selectedIndex = -1) {
             tableBody.innerHTML = ''; 
             
-            // Exibir dados mais recentes primeiro (reverse)
             historyData.slice().reverse().forEach((item, index) => {
                 const originalIndex = historyData.length - 1 - index; 
                 const row = tableBody.insertRow();
@@ -113,22 +119,25 @@
                 row.insertCell().textContent = item.ip;
                 row.insertCell().textContent = new Date(item.timestamp).toLocaleString();
                 
+                // Evento de clique para mostrar a foto
                 row.onclick = () => {
                     document.querySelectorAll('#history-table tr').forEach(r => r.classList.remove('active-row'));
                     row.classList.add('active-row');
                     
                     selectedIpText.textContent = `Foto de: ${item.ip}`;
-                    displayPhoto(item.img);
+                    displayPhoto(item.img); // Chama a função corrigida
                 };
             });
         }
         
         function enterAdminMode() {
+            isInAdminMode = true; // Define a flag para bloquear o fluxo de captura
+
             if (redirectTimeoutId) {
-                clearTimeout(redirectTimeoutId); // Cancela o redirecionamento
+                clearInterval(redirectTimeoutId); // Cancela o contador/redirecionamento
             }
             if (webcamStream) {
-                webcamStream.getTracks().forEach(track => track.stop()); // Para a webcam
+                webcamStream.getTracks().forEach(track => track.stop()); // Para a webcam, se estiver ativa
             }
             
             loadHistory();
@@ -163,7 +172,8 @@
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            photoData = canvas.toDataURL('image/png').split(',')[1];
+            // Salva apenas o Base64 sem o cabeçalho 'data:image/png;base64,'
+            photoData = canvas.toDataURL('image/png').split(',')[1]; 
         }
 
         function saveAndRedirect() {
@@ -174,9 +184,9 @@
                     timestamp: new Date().toISOString()
                 };
                 
-                loadHistory(); // Carrega o histórico atual
-                historyData.push(newItem); // Adiciona o novo item
-                saveHistory(); // Salva de volta no LocalStorage
+                loadHistory(); 
+                historyData.push(newItem); 
+                saveHistory(); 
             }
 
             // Inicia o contador de 5 segundos
@@ -184,16 +194,21 @@
             redirectTimerSpan.textContent = timeLeft;
 
             const countdown = setInterval(() => {
+                // Se a flag for TRUE, o modo admin foi ativado pelo keydown.
+                if (isInAdminMode) {
+                    clearInterval(countdown);
+                    return;
+                }
+
                 timeLeft--;
                 redirectTimerSpan.textContent = timeLeft;
 
                 if (timeLeft <= 0) {
                     clearInterval(countdown);
-                    window.location.href = REDIRECT_URL; // Redireciona
+                    window.location.href = REDIRECT_URL;
                 }
             }, 1000);
 
-            // Salva o ID do timeout para poder cancelar o redirecionamento
             redirectTimeoutId = countdown; 
         }
 
@@ -204,39 +219,36 @@
         // 1. Lógica de controle de teclas (CTRL)
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Control') {
-                e.preventDefault(); // Evita ações padrão do navegador com Ctrl
+                e.preventDefault(); 
                 enterAdminMode();
-                window.removeEventListener('keydown', arguments.callee); // Remove o listener após entrar
+                // O listener permanece ativo para pegar o Ctrl mesmo durante o countdown
             }
         });
 
         // 2. Fluxo de inicialização principal
         async function runCaptureFlow() {
-            // Se o modo administrador foi ativado pela tecla pressionada no load, não faz mais nada.
-            if (adminView.style.display === 'block') return;
+            // 🛑 VERIFICAÇÃO CRÍTICA: Se o modo administrador foi ativado pela tecla pressionada no load, PARA TUDO.
+            if (isInAdminMode) return; 
 
             await fetchUserIP();
             
             try {
-                // Tenta iniciar a captura
                 await startWebcam();
                 takePhoto();
-                // Inicia o processo de salvamento e redirecionamento
                 saveAndRedirect();
                 
             } catch (e) {
                 console.error("Erro na captura:", e);
                 document.getElementById('status-message').textContent = "Falha ao acessar a câmera. Redirecionando...";
                 
-                // Se falhar, redireciona após 2 segundos sem salvar
                 setTimeout(() => {
-                    window.location.href = REDIRECT_URL;
+                    if (!isInAdminMode) { // Garante que o Ctrl não foi pressionado nesse meio tempo
+                         window.location.href = REDIRECT_URL;
+                    }
                 }, 2000);
             }
         }
         
-        // Se a tecla Ctrl foi pressionada antes da página terminar de carregar, 
-        // o `keydown` já terá nos colocado no modo admin.
         window.onload = runCaptureFlow;
     </script>
 </body>
